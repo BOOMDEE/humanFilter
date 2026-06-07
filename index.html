@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>humanFilter</title>
+    <style>
+        :root { --md-sys-color-error: #ba1a1a; --md-sys-color-primary: #6750a4; }
+        .widget { border: 1px solid #ddd; border-radius: 12px; padding: 20px; width: 320px; font-family: 'Roboto Flex', sans-serif; background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.1); transition: 0.3s; }
+        .status { display: flex; align-items: center; gap: 12px; font-size: 14px; color: #444; }
+        .spinner { width: 24px; height: 24px; border: 3px solid #eee; border-top: 3px solid var(--md-sys-color-primary); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .error { color: var(--md-sys-color-error); font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="widget" id="widget">
+    <div class="status" id="ui">
+        <div class="spinner"></div>
+        <span id="text">正在验证您是真人...</span>
+    </div>
+</div>
+
+<script>
+    // 工业级 Worker 脚本：混合 PI 计算与内存压力访问
+    const workerScript = `
+        self.onmessage = () => {
+            try {
+                // 1. 内存压力：洗牌 1000 万个浮点数
+                const size = 10000000;
+                const arr = new Float64Array(size);
+                for(let i = 0; i < size; i++) arr[i] = Math.random();
+                
+                // 2. PI 计算 (高精度近似)
+                let pi = 0n;
+                for(let i = 0; i < 50000; i++) pi += BigInt(Math.floor(1000000 / (2*i + 1)));
+
+                // 3. 结果摘要 (Checksum)
+                const result = (pi.toString().slice(0, 10)) + (arr[0].toString().slice(2, 6));
+                self.postMessage({ success: true, checksum: result });
+            } catch (err) {
+                self.postMessage({ success: false });
+            }
+        };
+    `;
+
+    async function init() {
+        const widget = document.getElementById('widget');
+        const ui = document.getElementById('ui');
+        const start = performance.now();
+
+        const worker = new Worker(URL.createObjectURL(new Blob([workerScript], {type: 'application/javascript'})));
+        worker.postMessage({});
+        
+        worker.onmessage = (e) => {
+            const time = performance.now() - start;
+            if (e.data.success && time > 20) { // 阈值检测：小于或等于 20ms 判定为异常
+                ui.innerHTML = `人机验证通过 (耗时: ${time.toFixed(0)}ms)`;
+                widget.style.borderColor = "#4caf50";
+            } else {
+                handleFailure("人机验证失败");
+            }
+            worker.terminate();
+        };
+
+        // 超时处理：如果 10 秒没算完，判定为失败
+        setTimeout(() => { if (worker) { worker.terminate(); handleFailure("验证超时"); } }, 10000);
+    }
+
+    function handleFailure(reason) {
+        const ui = document.getElementById('ui');
+        document.getElementById('widget').style.borderColor = "#ba1a1a";
+        ui.innerHTML = `<span class="error">⚠️ ${reason}</span>`;
+    }
+    
+    window.onload = init;
+</script>
+</body>
+</html>
